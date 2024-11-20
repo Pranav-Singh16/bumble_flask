@@ -3,6 +3,11 @@ from quart_cors import cors
 import asyncio
 from playwright.async_api import async_playwright
 from bs4 import BeautifulSoup
+from io import BytesIO
+import base64
+import requests
+from PIL import Image
+from io import BytesIO
 
 app = Quart(__name__)
 
@@ -11,54 +16,71 @@ app = cors(app, allow_origin="*")
 
 scraped_images = []  # Global variable to hold the scraped images
 
+
+def image_url_to_base64(image_url):
+    try:
+        # Fetch the image content
+        response = requests.get(image_url)
+        
+        # Open the image using PIL
+        img = Image.open(BytesIO(response.content))
+        
+        # Save image to a bytes buffer
+        img_byte_arr = BytesIO()
+        img.save(img_byte_arr, format='PNG')  # Save as PNG (can be JPEG or any other format)
+        img_byte_arr = img_byte_arr.getvalue()
+        
+        # Convert the image to base64
+        base64_str = base64.b64encode(img_byte_arr).decode('utf-8')
+        
+        return base64_str
+    except Exception as e:
+        print(f"Error processing image {image_url}: {e}")
+        return None
+    
 # Scrape Bumble for profile images (to be called only once for each cycle)
 async def scrape_bumble_async(page):
     print('Scraping Bumble for images...')
     
     # Go directly to the Bumble get-started page
-    await page.goto("https://us1.bumble.com/get-started", wait_until="load")
-    print("Navigated to Bumble get-started page.")
-
-    # Wait for the "Continue with Facebook" button to be visible
+    try:
+        await page.goto("https://us1.bumble.com/get-started", wait_until="domcontentloaded", timeout=60000)
+        print("Navigated to Bumble get-started page.")
+    except Exception as e:
+        print(f"Error loading the page: {e}")
+        return []
+    
+    # Wait for the "Continue with Facebook" button to be visible and clickable
     try:
         facebook_button = page.locator("button:has-text('Continue with Facebook')")
-        await facebook_button.wait_for(state="visible", timeout=10000)
-        print('Clicking Continue with Facebook button...')
-        await facebook_button.click()
+        print("Waiting for 'Continue with Facebook' button...")
+        await facebook_button.wait_for(state="visible", timeout=20000)
+        await facebook_button.scroll_into_view_if_needed()
+        print("Clicking 'Continue with Facebook' button...")
+        await facebook_button.click(force=True)  # Force click to bypass any potential issues with visibility
+        print("Clicked 'Continue with Facebook'.")
     except Exception as e:
         print(f"Error clicking 'Continue with Facebook': {e}")
         return []
 
-    # Wait for the popup manually
+    # Wait for the popup and handle login
     try:
         print("Waiting for the popup to appear...")
-        popup = await page.wait_for_event("popup", timeout=15000)  # Wait for a popup to appear
+        popup = await page.wait_for_event("popup", timeout=15000)
         print("Popup appeared.")
-    except Exception as e:
-        print(f"Error during popup detection: {e}")
-        return []
-
-    # Now interact with the popup to fill in login details
-    try:
-        print('Filling in credentials...')
-        await popup.locator("#email").fill("s1973sp@gmail.com")  # Replace with your email
-        await popup.locator("#pass").fill("DaRkLaNd@16")  # Replace with your password
+        await popup.locator("#email").fill("s1973sp@gmail.com")
+        await popup.locator("#pass").fill("DaRkLaNd@16")
         await popup.locator("#pass").press("Enter")
         print('Credentials submitted.')
     except Exception as e:
-        print(f"Error filling in credentials: {e}")
+        print(f"Error during popup handling: {e}")
         return []
 
     # Wait for the "Continue as" button after login
     try:
-        print('Waiting for the user to continue...')
-        
-        # Use aria-label to find the button more reliably
         continue_as_button = popup.locator("div[aria-label='Continue as Pranav'][role='button']")
-        
-        # Wait for the button with a longer timeout and ensure it is in the viewport
-        await continue_as_button.wait_for(state="visible", timeout=20000)  # Increase timeout
-        await continue_as_button.scroll_into_view_if_needed()  # Ensure it's in view
+        await continue_as_button.wait_for(state="visible", timeout=30000)
+        await continue_as_button.scroll_into_view_if_needed()
         print("Clicking 'Continue as' button...")
         await continue_as_button.click()
         print('Logged in and continuing as user.')
@@ -72,7 +94,7 @@ async def scrape_bumble_async(page):
         html_content = await page.content()
         soup = BeautifulSoup(html_content, 'html.parser')
         image_tags = soup.find_all('img', class_='media-box__picture-image')
-        image_sources = [img['src'] for img in image_tags]
+        image_sources = [img['src'] for img in image_tags if 'src' in img.attrs]
 
         print(f"Scraped {len(image_sources)} images.")
         return image_sources[:2]  # Return the first two image sources
@@ -80,33 +102,6 @@ async def scrape_bumble_async(page):
         print(f"Error during scraping images: {e}")
         return []
 
-    # Wait for the "Continue as" button after login
-    try:
-        print('Waiting for the user to continue...')
-        
-        # Ensure the element is visible, clickable, and scrolls into view if necessary
-        continue_as_button = popup.locator("label:has-text('Continue as Pranav')")
-        await continue_as_button.wait_for(state="visible", timeout=30000)
-        await continue_as_button.scroll_into_view_if_needed()  # Ensure it's in view
-        await continue_as_button.click()
-        print('Logged in and continuing as user.')
-    except Exception as e:
-        print(f"Error during login process: {e}")
-        return []
-
-    # Scraping profile image URLs after login
-    try:
-        await asyncio.sleep(10)  # Wait for the page to load fully
-        html_content = await page.content()
-        soup = BeautifulSoup(html_content, 'html.parser')
-        image_tags = soup.find_all('img', class_='media-box__picture-image')
-        image_sources = [img['src'] for img in image_tags]
-
-        print(f"Scraped {len(image_sources)} images.")
-        return image_sources[:2]  # Return the first two image sources
-    except Exception as e:
-        print(f"Error during scraping images: {e}")
-        return []
 
 # Start Playwright process
 async def start_playwright_scraping():
@@ -119,7 +114,7 @@ async def start_playwright_scraping():
         print('New page created in browser.')
 
         images = await scrape_bumble_async(page)
-        
+
         await browser.close()
         print('Browser closed.')
 
@@ -129,21 +124,298 @@ async def start_playwright_scraping():
 @app.route('/scrape_images', methods=['POST'])
 async def scrape_images():
     global scraped_images  # Reference the global scraped_images
-    
+
     print('Received request to scrape images.')
-    
+
     # Start the scraping process asynchronously
     images = await start_playwright_scraping()
-    
+    for j in range(len(images)):
+        if images[j].startswith(('http://', 'https://')):  # Check if it already has http:// or https://
+            images[j] = images[j].replace('http://', 'https://')  # Ensure it's using https
+        else:
+            images[j] = 'https:' + images[j]
+
     # Store scraped images globally
     scraped_images = images
     print(f"Scraped Images: {scraped_images}")
-    
-    return jsonify({"message": "Scraping started", "images": scraped_images}), 200
+    base64_images = [image_url_to_base64(url) for url in images]
+    print()
 
+    return jsonify({"message": "Scraping started", "images": base64_images}), 200
+
+# Entry point for running Quart app
 if __name__ == '__main__':
     print('Starting Quart application...')
-    app.run(debug=True, port=5001)
+    
+    # Use asyncio to run Quart asynchronously
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(app.run_task(debug=True, port=5001))
+
+
+
+
+
+
+
+
+
+# from quart import Quart, jsonify
+# from quart_cors import cors
+# import asyncio
+# from playwright.async_api import async_playwright
+# from bs4 import BeautifulSoup
+
+# app = Quart(__name__)
+
+# # Enable CORS for all routes (development mode: allow all origins)
+# app = cors(app, allow_origin="*")
+
+# scraped_images = []  # Global variable to hold the scraped images
+
+# # Scrape Bumble for profile images (to be called only once for each cycle)
+# async def scrape_bumble_async(page):
+#     print('Scraping Bumble for images...')
+
+#     # Go directly to the Bumble get-started page
+#     await page.goto("https://us1.bumble.com/get-started", wait_until="load")
+#     print("Navigated to Bumble get-started page.")
+
+#     # Wait for the "Continue with Facebook" button to be visible
+#     try:
+#         facebook_button = page.locator("button:has-text('Continue with Facebook')")
+#         await facebook_button.wait_for(state="visible", timeout=10000)
+#         print('Clicking Continue with Facebook button...')
+#         await facebook_button.click()
+#     except Exception as e:
+#         print(f"Error clicking 'Continue with Facebook': {e}")
+#         return []
+
+#     # Wait for the popup manually and login
+#     try:
+#         print("Waiting for the popup to appear...")
+#         popup = await page.wait_for_event("popup", timeout=15000)  # Wait for a popup to appear
+#         print("Popup appeared.")
+#         print('Filling in credentials...')
+#         await popup.locator("#email").fill("s1973sp@gmail.com")  # Replace with your email
+#         await popup.locator("#pass").fill("DaRkLaNd@16")  # Replace with your password
+#         await popup.locator("#pass").press("Enter")
+#         print('Credentials submitted.')
+#     except Exception as e:
+#         print(f"Error during popup handling: {e}")
+#         return []
+
+#     # Wait for the "Continue as" button after login
+#     try:
+#         print('Waiting for the user to continue...')
+#         continue_as_button = popup.locator("div[aria-label='Continue as Pranav'][role='button']")
+#         await continue_as_button.wait_for(state="visible", timeout=20000)  # Increased timeout
+#         await continue_as_button.scroll_into_view_if_needed()  # Ensure it's in view
+#         print("Clicking 'Continue as' button...")
+#         await continue_as_button.click()
+#         print('Logged in and continuing as user.')
+#     except Exception as e:
+#         print(f"Error during login process: {e}")
+#         return []
+
+#     # Scraping profile image URLs after login
+#     try:
+#         await asyncio.sleep(10)  # Wait for the page to load fully
+#         html_content = await page.content()
+#         soup = BeautifulSoup(html_content, 'html.parser')
+#         image_tags = soup.find_all('img', class_='media-box__picture-image')
+#         image_sources = [img['src'] for img in image_tags if 'src' in img.attrs]
+
+#         print(f"Scraped {len(image_sources)} images.")
+#         return image_sources[:2]  # Return the first two image sources
+#     except Exception as e:
+#         print(f"Error during scraping images: {e}")
+#         return []
+
+# # Start Playwright process
+# async def start_playwright_scraping():
+#     print('Starting Playwright scraping process...')
+#     async with async_playwright() as p:
+#         browser = await p.chromium.launch(headless=False)
+#         print('Browser launched.')
+#         context = await browser.new_context()
+#         page = await context.new_page()
+#         print('New page created in browser.')
+
+#         images = await scrape_bumble_async(page)
+
+#         await browser.close()
+#         print('Browser closed.')
+
+#         return images  # Return the scraped image URLs
+
+# # Route to start the scraping process (must be async)
+# @app.route('/scrape_images', methods=['POST'])
+# async def scrape_images():
+#     global scraped_images  # Reference the global scraped_images
+
+#     print('Received request to scrape images.')
+
+#     # Start the scraping process asynchronously
+#     images = await start_playwright_scraping()
+
+#     # Store scraped images globally
+#     scraped_images = images
+#     print(f"Scraped Images: {scraped_images}")
+
+#     return jsonify({"message": "Scraping started", "images": scraped_images}), 200
+
+# if __name__ == '__main__':
+#     print('Starting Quart application...')
+#     app.run(debug=True, port=5001)
+
+
+
+# from quart import Quart, jsonify
+# from quart_cors import cors
+# import asyncio
+# from playwright.async_api import async_playwright
+# from bs4 import BeautifulSoup
+
+# app = Quart(__name__)
+
+# # Enable CORS for all routes (development mode: allow all origins)
+# app = cors(app, allow_origin="*")
+
+# scraped_images = []  # Global variable to hold the scraped images
+
+# # Scrape Bumble for profile images (to be called only once for each cycle)
+# async def scrape_bumble_async(page):
+#     print('Scraping Bumble for images...')
+    
+#     # Go directly to the Bumble get-started page
+#     await page.goto("https://us1.bumble.com/get-started", wait_until="load")
+#     print("Navigated to Bumble get-started page.")
+
+#     # Wait for the "Continue with Facebook" button to be visible
+#     try:
+#         facebook_button = page.locator("button:has-text('Continue with Facebook')")
+#         await facebook_button.wait_for(state="visible", timeout=10000)
+#         print('Clicking Continue with Facebook button...')
+#         await facebook_button.click()
+#     except Exception as e:
+#         print(f"Error clicking 'Continue with Facebook': {e}")
+#         return []
+
+#     # Wait for the popup manually
+#     try:
+#         print("Waiting for the popup to appear...")
+#         popup = await page.wait_for_event("popup", timeout=15000)  # Wait for a popup to appear
+#         print("Popup appeared.")
+#     except Exception as e:
+#         print(f"Error during popup detection: {e}")
+#         return []
+
+#     # Now interact with the popup to fill in login details
+#     try:
+#         print('Filling in credentials...')
+#         await popup.locator("#email").fill("s1973sp@gmail.com")  # Replace with your email
+#         await popup.locator("#pass").fill("DaRkLaNd@16")  # Replace with your password
+#         await popup.locator("#pass").press("Enter")
+#         print('Credentials submitted.')
+#     except Exception as e:
+#         print(f"Error filling in credentials: {e}")
+#         return []
+
+#     # Wait for the "Continue as" button after login
+#     try:
+#         print('Waiting for the user to continue...')
+        
+#         # Use aria-label to find the button more reliably
+#         continue_as_button = popup.locator("div[aria-label='Continue as Pranav'][role='button']")
+        
+#         # Wait for the button with a longer timeout and ensure it is in the viewport
+#         await continue_as_button.wait_for(state="visible", timeout=20000)  # Increase timeout
+#         await continue_as_button.scroll_into_view_if_needed()  # Ensure it's in view
+#         print("Clicking 'Continue as' button...")
+#         await continue_as_button.click()
+#         print('Logged in and continuing as user.')
+#     except Exception as e:
+#         print(f"Error during login process: {e}")
+#         return []
+
+#     # Scraping profile image URLs after login
+#     try:
+#         await asyncio.sleep(10)  # Wait for the page to load fully
+#         html_content = await page.content()
+#         soup = BeautifulSoup(html_content, 'html.parser')
+#         image_tags = soup.find_all('img', class_='media-box__picture-image')
+#         image_sources = [img['src'] for img in image_tags]
+
+#         print(f"Scraped {len(image_sources)} images.")
+#         return image_sources[:2]  # Return the first two image sources
+#     except Exception as e:
+#         print(f"Error during scraping images: {e}")
+#         return []
+
+#     # Wait for the "Continue as" button after login
+#     try:
+#         print('Waiting for the user to continue...')
+        
+#         # Ensure the element is visible, clickable, and scrolls into view if necessary
+#         continue_as_button = popup.locator("label:has-text('Continue as Pranav')")
+#         await continue_as_button.wait_for(state="visible", timeout=30000)
+#         await continue_as_button.scroll_into_view_if_needed()  # Ensure it's in view
+#         await continue_as_button.click()
+#         print('Logged in and continuing as user.')
+#     except Exception as e:
+#         print(f"Error during login process: {e}")
+#         return []
+
+#     # Scraping profile image URLs after login
+#     try:
+#         await asyncio.sleep(10)  # Wait for the page to load fully
+#         html_content = await page.content()
+#         soup = BeautifulSoup(html_content, 'html.parser')
+#         image_tags = soup.find_all('img', class_='media-box__picture-image')
+#         image_sources = [img['src'] for img in image_tags]
+
+#         print(f"Scraped {len(image_sources)} images.")
+#         return image_sources[:2]  # Return the first two image sources
+#     except Exception as e:
+#         print(f"Error during scraping images: {e}")
+#         return []
+
+# # Start Playwright process
+# async def start_playwright_scraping():
+#     print('Starting Playwright scraping process...')
+#     async with async_playwright() as p:
+#         browser = await p.chromium.launch(headless=False)
+#         print('Browser launched.')
+#         context = await browser.new_context()
+#         page = await context.new_page()
+#         print('New page created in browser.')
+
+#         images = await scrape_bumble_async(page)
+        
+#         await browser.close()
+#         print('Browser closed.')
+
+#         return images  # Return the scraped image URLs
+
+# # Route to start the scraping process (must be async)
+# @app.route('/scrape_images', methods=['POST'])
+# async def scrape_images():
+#     global scraped_images  # Reference the global scraped_images
+    
+#     print('Received request to scrape images.')
+    
+#     # Start the scraping process asynchronously
+#     images = await start_playwright_scraping()
+    
+#     # Store scraped images globally
+#     scraped_images = images
+#     print(f"Scraped Images: {scraped_images}")
+    
+#     return jsonify({"message": "Scraping started", "images": scraped_images}), 200
+
+# if __name__ == '__main__':
+#     print('Starting Quart application...')
+#     app.run(debug=True, port=5001)
 
 
 
