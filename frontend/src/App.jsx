@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Header } from './components/Header';
 import UploadBox from './components/UploadBox';
-import { ComparisonView } from './components/ComparisonView';
+import ComparisonView from './components/ComparisonView';
 import { useRecoilState } from 'recoil';
 import { processStatusState, userImageState } from './state/atoms';
 import axios from 'axios';
