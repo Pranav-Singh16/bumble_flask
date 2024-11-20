@@ -7,7 +7,6 @@ from io import BytesIO
 import base64
 import requests
 from PIL import Image
-from io import BytesIO
 
 app = Quart(__name__)
 
@@ -16,7 +15,7 @@ app = cors(app, allow_origin="*")
 
 scraped_images = []  # Global variable to hold the scraped images
 
-
+# Function to convert image URL to base64 (synchronous)
 def image_url_to_base64(image_url):
     try:
         # Fetch the image content
@@ -37,7 +36,7 @@ def image_url_to_base64(image_url):
     except Exception as e:
         print(f"Error processing image {image_url}: {e}")
         return None
-    
+
 # Scrape Bumble for profile images (to be called only once for each cycle)
 async def scrape_bumble_async(page):
     print('Scraping Bumble for images...')
@@ -97,11 +96,10 @@ async def scrape_bumble_async(page):
         image_sources = [img['src'] for img in image_tags if 'src' in img.attrs]
 
         print(f"Scraped {len(image_sources)} images.")
-        return image_sources[:2]  # Return the first two image sources
+        return image_sources[:2]  # Ensure you return exactly 2 images
     except Exception as e:
         print(f"Error during scraping images: {e}")
         return []
-
 
 # Start Playwright process
 async def start_playwright_scraping():
@@ -129,6 +127,8 @@ async def scrape_images():
 
     # Start the scraping process asynchronously
     images = await start_playwright_scraping()
+
+    # Ensure images have https:// prefix
     for j in range(len(images)):
         if images[j].startswith(('http://', 'https://')):  # Check if it already has http:// or https://
             images[j] = images[j].replace('http://', 'https://')  # Ensure it's using https
@@ -138,9 +138,22 @@ async def scrape_images():
     # Store scraped images globally
     scraped_images = images
     print(f"Scraped Images: {scraped_images}")
-    base64_images = [image_url_to_base64(url) for url in images]
-    print()
 
+    # Perform the base64 conversion for the scraped images
+    base64_images = []
+    
+    for url in images:
+        base64_str = image_url_to_base64(url)  # No await needed since it's synchronous
+        if base64_str:  # Only append if base64 conversion is successful
+            # Print the length of the base64 string for debugging
+            print(f"Base64 string length for {url}: {len(base64_str)}")
+            base64_images.append(f"data:image/png;base64,{base64_str}")
+        else:
+            print(f"Failed to convert image {url} to base64")
+
+    print(f"Base64 Images: {base64_images}")
+
+    # Return response with base64 images
     return jsonify({"message": "Scraping started", "images": base64_images}), 200
 
 # Entry point for running Quart app
@@ -150,6 +163,174 @@ if __name__ == '__main__':
     # Use asyncio to run Quart asynchronously
     loop = asyncio.get_event_loop()
     loop.run_until_complete(app.run_task(debug=True, port=5001))
+
+
+
+
+
+# from quart import Quart, jsonify
+# from quart_cors import cors
+# import asyncio
+# from playwright.async_api import async_playwright
+# from bs4 import BeautifulSoup
+# from io import BytesIO
+# import base64
+# import requests
+# from PIL import Image
+# from io import BytesIO
+
+# app = Quart(__name__)
+
+# # Enable CORS for all routes (development mode: allow all origins)
+# app = cors(app, allow_origin="*")
+
+# scraped_images = []  # Global variable to hold the scraped images
+
+
+# def image_url_to_base64(image_url):
+#     try:
+#         # Ensure the URL has the correct protocol (https://)
+#         if not image_url.startswith('http://') and not image_url.startswith('https://'):
+#             image_url = 'https:' + image_url  # Prepend https:// if not present
+        
+#         # Fetch the image content
+#         response = requests.get(image_url)
+        
+#         # Check for valid response
+#         if response.status_code != 200:
+#             print(f"Failed to fetch image from {image_url}. Status code: {response.status_code}")
+#             return None
+        
+#         # Open the image using PIL
+#         img = Image.open(BytesIO(response.content))
+        
+#         # Save image to a bytes buffer
+#         img_byte_arr = BytesIO()
+#         img.save(img_byte_arr, format='PNG')  # Save as PNG (can be JPEG or any other format)
+#         img_byte_arr = img_byte_arr.getvalue()
+        
+#         # Convert the image to base64
+#         base64_str = base64.b64encode(img_byte_arr).decode('utf-8')
+        
+#         return base64_str
+#     except Exception as e:
+#         print(f"Error processing image {image_url}: {e}")
+#         return None
+#         print(f"Error processing image {image_url}: {e}")
+#         return None
+    
+# # Scrape Bumble for profile images (to be called only once for each cycle)
+# async def scrape_bumble_async(page):
+#     print('Scraping Bumble for images...')
+    
+#     # Go directly to the Bumble get-started page
+#     try:
+#         await page.goto("https://us1.bumble.com/get-started", wait_until="domcontentloaded", timeout=60000)
+#         print("Navigated to Bumble get-started page.")
+#     except Exception as e:
+#         print(f"Error loading the page: {e}")
+#         return []
+    
+#     # Wait for the "Continue with Facebook" button to be visible and clickable
+#     try:
+#         facebook_button = page.locator("button:has-text('Continue with Facebook')")
+#         print("Waiting for 'Continue with Facebook' button...")
+#         await facebook_button.wait_for(state="visible", timeout=20000)
+#         await facebook_button.scroll_into_view_if_needed()
+#         print("Clicking 'Continue with Facebook' button...")
+#         await facebook_button.click(force=True)  # Force click to bypass any potential issues with visibility
+#         print("Clicked 'Continue with Facebook'.")
+#     except Exception as e:
+#         print(f"Error clicking 'Continue with Facebook': {e}")
+#         return []
+
+#     # Wait for the popup and handle login
+#     try:
+#         print("Waiting for the popup to appear...")
+#         popup = await page.wait_for_event("popup", timeout=15000)
+#         print("Popup appeared.")
+#         await popup.locator("#email").fill("s1973sp@gmail.com")
+#         await popup.locator("#pass").fill("DaRkLaNd@16")
+#         await popup.locator("#pass").press("Enter")
+#         print('Credentials submitted.')
+#     except Exception as e:
+#         print(f"Error during popup handling: {e}")
+#         return []
+
+#     # Wait for the "Continue as" button after login
+#     try:
+#         continue_as_button = popup.locator("div[aria-label='Continue as Pranav'][role='button']")
+#         await continue_as_button.wait_for(state="visible", timeout=30000)
+#         await continue_as_button.scroll_into_view_if_needed()
+#         print("Clicking 'Continue as' button...")
+#         await continue_as_button.click()
+#         print('Logged in and continuing as user.')
+#     except Exception as e:
+#         print(f"Error during login process: {e}")
+#         return []
+
+#     # Scraping profile image URLs after login
+#     try:
+#         await asyncio.sleep(10)  # Wait for the page to load fully
+#         html_content = await page.content()
+#         soup = BeautifulSoup(html_content, 'html.parser')
+#         image_tags = soup.find_all('img', class_='media-box__picture-image')
+#         image_sources = [img['src'] for img in image_tags if 'src' in img.attrs]
+
+#         print(f"Scraped {len(image_sources)} images.")
+#         return image_sources[:2]  # Return the first two image sources
+#     except Exception as e:
+#         print(f"Error during scraping images: {e}")
+#         return []
+
+
+# # Start Playwright process
+# async def start_playwright_scraping():
+#     print('Starting Playwright scraping process...')
+#     async with async_playwright() as p:
+#         browser = await p.chromium.launch(headless=False)
+#         print('Browser launched.')
+#         context = await browser.new_context()
+#         page = await context.new_page()
+#         print('New page created in browser.')
+
+#         images = await scrape_bumble_async(page)
+
+#         await browser.close()
+#         print('Browser closed.')
+
+#         return images  # Return the scraped image URLs
+
+# # Route to start the scraping process (must be async)
+# @app.route('/scrape_images', methods=['POST'])
+# async def scrape_images():
+#     global scraped_images  # Reference the global scraped_images
+
+#     print('Received request to scrape images.')
+
+#     # Start the scraping process asynchronously
+#     images = await start_playwright_scraping()
+#     for j in range(len(images)):
+#         if images[j].startswith(('http://', 'https://')):  # Check if it already has http:// or https://
+#             images[j] = images[j].replace('http://', 'https://')  # Ensure it's using https
+#         else:
+#             images[j] = 'https:' + images[j]
+
+#     # Store scraped images globally
+#     scraped_images = images
+#     print(f"Scraped Images: {scraped_images}")
+#     base64_images = [image_url_to_base64(url) for url in images]
+#     print()
+
+#     return jsonify({"message": "Scraping started", "images": base64_images}), 200
+
+# # Entry point for running Quart app
+# if __name__ == '__main__':
+#     print('Starting Quart application...')
+    
+#     # Use asyncio to run Quart asynchronously
+#     loop = asyncio.get_event_loop()
+#     loop.run_until_complete(app.run_task(debug=True, port=5001))
 
 
 
