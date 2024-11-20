@@ -40,6 +40,16 @@ def image_url_to_base64(image_url):
 # Scrape Bumble for profile images (to be called only once for each cycle)
 async def scrape_bumble_async(page):
     print('Scraping Bumble for images...')
+
+
+    try:
+        await page.goto("https://bumble.com/en-in/")
+        await page.locator("#main").get_by_role("link", name="Sign In").click()
+
+    except Exception as e:
+        print(f"Error scraping Bumble: {e}")
+        return[]
+    
     
     # Go directly to the Bumble get-started page
     try:
@@ -155,6 +165,7 @@ async def scrape_images():
 
     # Return response with base64 images
     return jsonify({"message": "Scraping started", "images": base64_images}), 200
+
 
 # Entry point for running Quart app
 if __name__ == '__main__':
