@@ -83,14 +83,13 @@ function App() {
   //   }
   // };
 
-
   const handleImageUpload = async (event) => {
     const imageFile = event.target.files[0];
     if (imageFile) {
       // Immediately update user image and set processing status
       setUserImage(URL.createObjectURL(imageFile));  // Set user image URL
       setProcessStatus('loading');  // Set process status to loading
-      setBumbleImage(null);  // Reset bumble image while waiting for backend
+      setBumbleImage([]);  // Reset bumble images while waiting for backend
   
       try {
         // Create FormData and send it to the backend for scraping
@@ -109,10 +108,10 @@ function App() {
   
         // Assuming the backend sends images in an array like: response.data.images
         if (response.data.images && response.data.images.length > 0) {
-          console.log('Received Bumble image:', response.data.images[0]);
-          setBumbleImage(response.data.images[0]);  // Set the Bumble image from response
+          console.log('Received Bumble images:', response.data.images);
+          setBumbleImage(response.data.images);  // Set the array of Bumble images
         } else {
-          console.error('No Bumble image found in response.');
+          console.error('No Bumble images found in response.');
         }
   
         setProcessStatus('completed');  // Set process status to completed
@@ -121,7 +120,49 @@ function App() {
         setProcessStatus('failed');
       }
     }
-  };
+};
+
+
+
+
+  // const handleImageUpload = async (event) => {
+  //   const imageFile = event.target.files[0];
+  //   if (imageFile) {
+  //     // Immediately update user image and set processing status
+  //     setUserImage(URL.createObjectURL(imageFile));  // Set user image URL
+  //     setProcessStatus('loading');  // Set process status to loading
+  //     setBumbleImage(null);  // Reset bumble image while waiting for backend
+  
+  //     try {
+  //       // Create FormData and send it to the backend for scraping
+  //       const formData = new FormData();
+  //       formData.append('user_images', imageFile);
+  
+  //       // Send the image to backend for scraping
+  //       const response = await axios.post('http://localhost:5001/scrape_images', formData, {
+  //         headers: {
+  //           'Content-Type': 'multipart/form-data',
+  //         },
+  //       });
+  
+  //       // Log the backend response to check if bumbleImage is present
+  //       console.log('Backend response:', response.data);
+  
+  //       // Assuming the backend sends images in an array like: response.data.images
+  //       if (response.data.images && response.data.images.length > 0) {
+  //         console.log('Received Bumble image:', response.data.images[0]);
+  //         setBumbleImage(response.data.images[0]);  // Set the Bumble image from response
+  //       } else {
+  //         console.error('No Bumble image found in response.');
+  //       }
+  
+  //       setProcessStatus('completed');  // Set process status to completed
+  //     } catch (error) {
+  //       console.error('Error processing the image:', error);
+  //       setProcessStatus('failed');
+  //     }
+  //   }
+  // };
   
 
   
