@@ -2,7 +2,7 @@ import React from 'react';
 import { Shield } from 'lucide-react';
 
 export const Header = () => (
-  <header className="bg-indigo-600 shadow-lg">
+  <header className="bg-purple-800 shadow-lg">
     <nav className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
       <div className="flex h-16 items-center justify-between">
         <div className="flex items-center">
@@ -16,3 +16,4 @@ export const Header = () => (
     </nav>
   </header>
 );
+
