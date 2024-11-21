@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import UploadBox from './components/UploadBox';  // Import the UploadBox component
 import { ComparisonView } from './components/ComparisonView';  // Import ComparisonView component
 import { Header } from './components/Header';
 
 const Main = () => {
   const [userImage, setUserImage] = useState('');  // Initially no user image
-  const [bumbleImage, setBumbleImage] = useState([
+  const [bumbleImage, setBumbleImage] = useState([  // Initially, empty array for Bumble images
     'https://via.placeholder.com/150', // Placeholder Bumble image 1
     'https://via.placeholder.com/150', // Placeholder Bumble image 2
   ]);
   const [error, setError] = useState('');  // Error message state
 
+  // Function to handle file upload and send it to the backend
   const handleUploadImage = (ev) => {
     ev.preventDefault();
 
@@ -50,10 +51,30 @@ const Main = () => {
         // Handle success: Set the URL of the uploaded image
         setUserImage(body.resized_image_url);  // Set the uploaded user image
         setError('');  // Clear any previous error messages
+        fetchBumbleImages();  // Call to scrape Bumble images after the user image is uploaded
       })
       .catch((error) => {
         // Handle error: Set the error message
         setError('An error occurred while uploading the image.');
+      });
+  };
+
+  // Function to fetch Bumble images
+  const fetchBumbleImages = () => {
+    fetch('http://localhost:5000/scrape_images', {
+      method: 'POST',
+    })
+      .then((response) => {
+        if (response.ok) {
+          return response.json();
+        }
+        throw new Error('Error fetching Bumble images');
+      })
+      .then((data) => {
+        setBumbleImage(data.images);  // Update Bumble images in the state
+      })
+      .catch((error) => {
+        setError('An error occurred while fetching Bumble images.');
       });
   };
 
